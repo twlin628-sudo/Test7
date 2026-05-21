@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XDC Pin Mapper</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg:#0f1117;--bg2:#1a1d27;--bg3:#22263a;
+    --border:#2e3250;--border2:#3d4270;
+    --accent:#5c7cfa;--accent2:#748ffc;
+    --green:#51cf66;--yellow:#fcc419;--red:#ff6b6b;
+    --text:#e8eaf6;--text2:#8b91c7;--text3:#5a6090;
+    --mono:'JetBrains Mono','Fira Code',monospace;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;line-height:1.6;}
+  header{border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;gap:14px;background:var(--bg2);}
+  .logo{width:30px;height:30px;border:1.5px solid var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--accent);}
+  header h1{font-size:15px;font-weight:500;}
+  header p{font-size:11px;color:var(--text2);}
+  .main{display:grid;grid-template-columns:290px 1fr;min-height:calc(100vh - 57px);}
+  .sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:18px 16px;display:flex;flex-direction:column;gap:18px;overflow-y:auto;}
+  .sec-label{font-size:10px;font-weight:600;letter-spacing:.12em;color:var(--text3);text-transform:uppercase;margin-bottom:7px;}
+  .upload-zone{border:1.5px dashed var(--border2);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;position:relative;}
+  .upload-zone:hover{border-color:var(--accent);background:rgba(92,124,250,.06);}
+  .upload-zone.loaded{border-color:var(--green);border-style:solid;}
+  .upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .upload-zone .icon{font-size:20px;color:var(--text3);margin-bottom:4px;}
+  .upload-zone.loaded .icon{color:var(--green);}
+  .upload-zone p{font-size:12px;color:var(--text2);}
+  .fname{font-size:11px;color:var(--green);margin-top:3px;font-family:var(--mono);word-break:break-all;}
+  .sheet-status{display:flex;flex-direction:column;gap:6px;}
+  .sheet-row{display:flex;align-items:flex-start;gap:8px;font-size:11px;}
+  .sheet-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+  .dot-ok{background:var(--green);}
+  .dot-err{background:var(--red);}
+  .sheet-name{color:var(--text);font-family:var(--mono);font-size:11px;}
+  .sheet-msg{color:var(--text3);font-size:10px;margin-top:1px;}
+  .conn-grid{display:flex;flex-direction:column;gap:6px;}
+  .conn-row{display:grid;grid-template-columns:48px 16px 1fr;align-items:center;gap:6px;}
+  .conn-tag{background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:4px 6px;font-size:11px;font-family:var(--mono);color:var(--accent2);text-align:center;}
+  .conn-row select{background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 7px;font-size:11px;font-family:var(--mono);outline:none;width:100%;}
+  .conn-row select:focus{border-color:var(--accent);}
+  .conn-row select option{background:var(--bg3);}
+  .arr{font-size:11px;color:var(--text3);text-align:center;}
+  .btn{display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 14px;border-radius:7px;border:none;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;width:100%;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent2);}
+  .content{padding:22px 26px;overflow-y:auto;}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:16px;}
+  .card-title{font-size:13px;font-weight:500;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .badge{font-size:10px;font-weight:600;letter-spacing:.06em;padding:2px 7px;border-radius:4px;}
+  .badge-blue  {background:rgba(92,124,250,.15);color:var(--accent2);}
+  .badge-green {background:rgba(81,207,102,.15);color:var(--green);}
+  .badge-yellow{background:rgba(252,196,25,.15);color:var(--yellow);}
+  .badge-red   {background:rgba(255,107,107,.15);color:var(--red);}
+  .tw{overflow-x:auto;border-radius:8px;border:1px solid var(--border);}
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th{background:var(--bg3);color:var(--text2);font-weight:500;padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;font-size:11px;}
+  td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;white-space:nowrap;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(255,255,255,.02);}
+  .c-sig{color:var(--accent2);}.c-pin{color:var(--yellow);}.c-fpga{color:var(--green);}
+  .port-edit{background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:3px 6px;font-size:11px;font-family:var(--mono);width:200px;outline:none;}
+  .port-edit:focus{border-color:var(--accent);}
+  .xdc-out{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-family:var(--mono);font-size:12px;color:var(--text2);white-space:pre;overflow-x:auto;line-height:1.85;max-height:400px;overflow-y:auto;}
+  .xc{color:#c792ea;}.xp{color:var(--accent2);}.xn{color:var(--yellow);}.xo{color:var(--green);}.xcm{color:var(--text3);}
+  .warn-box{background:rgba(252,196,25,.07);border:1px solid rgba(252,196,25,.28);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--yellow);margin-bottom:14px;}
+  .warn-box ul{padding-left:14px;margin-top:4px;}
+  .warn-box li{margin-top:3px;font-family:var(--mono);font-size:11px;}
+  .info-box{background:rgba(92,124,250,.07);border:1px solid rgba(92,124,250,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--accent2);margin-bottom:14px;}
+  .stats{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+  .stat{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;min-width:80px;}
+  .stat-val{font-size:20px;font-weight:600;font-family:var(--mono);}
+  .stat-lbl{font-size:10px;color:var(--text3);margin-top:1px;letter-spacing:.06em;text-transform:uppercase;}
+  .hrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;}
+  .copy-btn{background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text2);padding:4px 10px;font-size:11px;cursor:pointer;font-family:var(--sans);transition:all .15s;}
+  .copy-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .empty{text-align:center;padding:70px 40px;color:var(--text3);}
+  .empty .big{font-size:36px;margin-bottom:12px;}
+  .empty p{font-size:13px;line-height:1.7;max-width:280px;margin:0 auto;}
+  ::-webkit-scrollbar{width:5px;height:5px;}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">X</div>
+  <div>
+    <h1>XDC Pin Mapper</h1>
+    <p>EVB → FMC-HPC Converter → S7-19PS-2 → FPGA</p>
+  </div>
+</header>
+<div class="main">
+<aside class="sidebar">
+  <div>
+    <div class="sec-label">1 · Excel 檔案</div>
+    <div class="upload-zone" id="dropzone">
+      <input type="file" accept=".xlsx,.xls" onchange="loadFile(this)">
+      <div class="icon">📂</div>
+      <p>點擊或拖曳 Excel 檔案</p>
+      <div class="fname" id="fname"></div>
+    </div>
+  </div>
+  <div id="sheet-status-wrap" style="display:none">
+    <div class="sec-label">Sheet 偵測</div>
+    <div class="sheet-status" id="sheet-status"></div>
+  </div>
+  <div id="conn-wrap" style="display:none">
+    <div class="sec-label">2 · 物理接線設定</div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px;">FMC-HPC Converter → S7-19PS-2</div>
+    <div class="conn-grid" id="conn-grid"></div>
+  </div>
+  <div id="run-wrap" style="display:none">
+    <div class="sec-label">3 · 執行</div>
+    <button class="btn btn-primary" onclick="runMapping()">▶ Run mapping</button>
+  </div>
+</aside>
+<main class="content" id="content">
+  <div class="empty">
+    <div class="big">🔌</div>
+    <p>上傳包含三個 Sheet 的 Excel 檔案，設定物理接線後執行 mapping。</p>
+  </div>
+</main>
+</div>
+
+<script>
+// ── required column names ─────────────────────────────────
+const REQUIRED = {
+  t1: ['HPC/LPC Pin No.','HPC/LPC Pin Name','EVB Pin Name'],
+  t2: ['Peripheral Connection','Signal Name','FMC Connector','SEAM Pin No.'],
+  t3: ['S7 Connector','Pin No.','FPGA Pin No.']
+};
+const SHEET = { t1:'Table1_EVB', t2:'Table2_FMC_S7', t3:'Table3_S7_FPGA' };
+const FMC_CONNS = ['J3','J4'];
+const S7_OPTS   = ['J1','J2','J3','J4','J5','J6','J7','J8'];
+
+let parsedSheets = {};   // { t1: [...rows], t2: [...], t3: [...] }
+let connWiring   = { J3:'none', J4:'none' };
+let mappingResult = [];
+let warnings = [];
+
+// ── smart sheet parser ────────────────────────────────────
+// Scans rows top-down to find the header row that contains
+// all required column names, then parses data from that row.
+function smartParse(ws, requiredCols) {
+  // get raw 2D array (no header inference)
+  const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+  if (!raw.length) return { ok:false, msg:'Sheet 是空的', rows:[] };
+
+  // find header row index
+  let hdrIdx = -1;
+  for (let i = 0; i < Math.min(raw.length, 10); i++) {
+    const rowVals = raw[i].map(v => String(v).trim());
+    if (requiredCols.every(rc => rowVals.includes(rc))) {
+      hdrIdx = i; break;
+    }
+  }
+  if (hdrIdx === -1) {
+    return { ok:false, msg:`找不到 header 列（需包含：${requiredCols.join(', ')}）`, rows:[] };
+  }
+
+  const headers = raw[hdrIdx].map(v => String(v).trim());
+  const rows = [];
+  for (let i = hdrIdx + 1; i < raw.length; i++) {
+    const cell0 = String(raw[i][0] || '').trim();
+    // skip truly empty rows
+    if (raw[i].every(v => String(v).trim() === '')) continue;
+    const obj = {};
+    headers.forEach((h, ci) => { if (h) obj[h] = String(raw[i][ci] ?? '').trim(); });
+    rows.push(obj);
+  }
+  if (!rows.length) return { ok:false, msg:'Header 後無資料列', rows:[] };
+  return { ok:true, msg:`${rows.length} 筆資料（header 在第 ${hdrIdx+1} 列）`, rows };
+}
+
+// ── file load ─────────────────────────────────────────────
+function loadFile(input) {
+  const file = input.files[0]; if (!file) return;
+  document.getElementById('fname').textContent = file.name;
+  document.getElementById('dropzone').classList.add('loaded');
+  document.getElementById('dropzone').querySelector('.icon').textContent = '✅';
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type:'array' });
+    parsedSheets = {};
+    ['t1','t2','t3'].forEach(key => {
+      const ws = wb.Sheets[SHEET[key]];
+      if (!ws) { parsedSheets[key] = { ok:false, msg:`找不到 Sheet "${SHEET[key]}"`, rows:[] }; return; }
+      parsedSheets[key] = smartParse(ws, REQUIRED[key]);
+    });
+    renderSheetStatus();
+    buildConnGrid();
+    document.getElementById('sheet-status-wrap').style.display = 'block';
+    document.getElementById('conn-wrap').style.display = 'block';
+    document.getElementById('run-wrap').style.display = 'block';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderSheetStatus() {
+  document.getElementById('sheet-status').innerHTML =
+    ['t1','t2','t3'].map(key => {
+      const { ok, msg } = parsedSheets[key];
+      return `<div class="sheet-row">
+        <div class="sheet-dot ${ok?'dot-ok':'dot-err'}"></div>
+        <div>
+          <div class="sheet-name">${SHEET[key]}</div>
+          <div class="sheet-msg">${escH(msg)}</div>
+        </div>
+      </div>`;
+    }).join('');
+}
+
+function buildConnGrid() {
+  document.getElementById('conn-grid').innerHTML = FMC_CONNS.map(fmc => {
+    const opts = ['<option value="none">— not connected —</option>',
+      ...S7_OPTS.map(j=>`<option value="${j}">${j}</option>`)].join('');
+    return `<div class="conn-row">
+      <div class="conn-tag">${fmc}</div>
+      <div class="arr">→</div>
+      <select onchange="connWiring['${fmc}']=this.value">${opts}</select>
+    </div>`;
+  }).join('');
+}
+
+// ── mapping ───────────────────────────────────────────────
+function runMapping() {
+  warnings = []; mappingResult = [];
+
+  if (!['t1','t2','t3'].every(k => parsedSheets[k]?.ok)) {
+    alert('請先確認三個 Sheet 均正確載入（綠燈）後再執行。'); return;
+  }
+
+  const t1 = parsedSheets.t1.rows;
+  const t2 = parsedSheets.t2.rows;
+  const t3 = parsedSheets.t3.rows;
+
+  // T2 lookup: "Peripheral Connection|Signal Name" → row
+  const t2map = {};
+  t2.forEach(row => {
+    const k = `${row['Peripheral Connection']}|${row['Signal Name']}`;
+    t2map[k] = row;
+  });
+
+  // T3 lookup: "S7 Connector|Pin No." → row
+  const t3map = {};
+  t3.forEach(row => {
+    const k = `${row['S7 Connector']}|${row['Pin No.']}`;
+    t3map[k] = row;
+  });
+
+  t1.forEach((row, idx) => {
+    const evbPin  = row['EVB Pin Name']      || '';
+    const hpcNo   = row['HPC/LPC Pin No.']   || '';
+    const hpcName = row['HPC/LPC Pin Name']  || '';
+    if (!hpcNo && !hpcName && !evbPin) return;
+
+    const r = {
+      evbPin, hpcNo, hpcName,
+      fmcConn:'', seamPin:'',
+      s7Conn:'', fpgaPin:'', fpgaDesc:'', fpgaBank:'', ioVolt:'',
+      status:'ok', errors:[], portName: evbPin
+    };
+
+    // Step 1: T1 → T2
+    const t2row = t2map[`${hpcNo}|${hpcName}`];
+    if (!t2row) {
+      r.status='error';
+      r.errors.push(`T1→T2: (${hpcNo} | ${hpcName}) 在 Table 2 找不到`);
+      warn(`Row ${idx+2}: "${hpcNo}" + "${hpcName}" 未 match Table 2`);
+    } else {
+      r.fmcConn = t2row['FMC Connector'] || '';
+      r.seamPin = t2row['SEAM Pin No.']  || '';
+
+      // Step 2: resolve S7 connector
+      const s7conn = connWiring[r.fmcConn];
+      if (!s7conn || s7conn === 'none') {
+        r.status='error';
+        r.errors.push(`FMC "${r.fmcConn}" 未設定物理接線`);
+        warn(`Row ${idx+2}: FMC "${r.fmcConn}" 未設定接線`);
+      } else {
+        r.s7Conn = s7conn;
+
+        // Step 3: T2 → T3
+        const t3row = t3map[`${s7conn}|${r.seamPin}`];
+        if (!t3row) {
+          r.status='error';
+          r.errors.push(`T2→T3: (${s7conn} | ${r.seamPin}) 在 Table 3 找不到`);
+          warn(`Row ${idx+2}: S7="${s7conn}" + Pin="${r.seamPin}" 未 match Table 3`);
+        } else {
+          r.fpgaPin  = t3row['FPGA Pin No.']          || '';
+          r.fpgaDesc = t3row['FPGA Pin Description']  || '';
+          r.fpgaBank = t3row['FPGA Bank']             || '';
+          r.ioVolt   = t3row['I/O Voltage']           || '';
+          if (!r.fpgaPin) {
+            r.status='warn';
+            r.errors.push('FPGA Pin No. 為空');
+            warn(`Row ${idx+2}: "${evbPin}" FPGA pin 為空`);
+          }
+        }
+      }
+    }
+    mappingResult.push(r);
+  });
+
+  renderResult();
+}
+
+// ── render ────────────────────────────────────────────────
+function renderResult() {
+  const ok   = mappingResult.filter(r=>r.status==='ok').length;
+  const errs = mappingResult.filter(r=>r.status==='error').length;
+  const wrns = mappingResult.filter(r=>r.status==='warn').length;
+
+  let html = `<div class="stats">
+    <div class="stat"><div class="stat-val">${mappingResult.length}</div><div class="stat-lbl">Total</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--green)">${ok}</div><div class="stat-lbl">OK</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--yellow)">${wrns}</div><div class="stat-lbl">Warn</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--red)">${errs}</div><div class="stat-lbl">Error</div></div>
+  </div>`;
+
+  const wstr = FMC_CONNS.map(f => {
+    const t = connWiring[f];
+    const ok = t && t !== 'none';
+    return `<span style="color:${ok?'var(--green)':'var(--red)'}">${f}→${ok?t:'(none)'}</span>`;
+  }).join('  ·  ');
+  html += `<div class="info-box">接線設定：${wstr}</div>`;
+
+  if (warnings.length) {
+    html += `<div class="warn-box">⚠ Join 問題：<ul>`;
+    warnings.forEach(w=>{ html+=`<li>${escH(w)}</li>`; });
+    html += `</ul></div>`;
+  }
+
+  html += `<div class="card">
+    <div class="card-title">Pin mapping chain <span class="badge badge-blue">可編輯 Port Name</span></div>
+    <div class="tw"><table>
+      <thead><tr>
+        <th>#</th><th>EVB Pin Name</th>
+        <th>HPC/LPC Pin No.</th><th>HPC/LPC Pin Name</th>
+        <th>FMC Conn</th><th>SEAM Pin No.</th>
+        <th>S7 Conn</th><th>FPGA Pin</th><th>Bank</th>
+        <th>Port Name (XDC)</th><th>Status</th>
+      </tr></thead><tbody>`;
+
+  mappingResult.forEach((r,i) => {
+    const st = r.status==='ok'
+      ? '<span class="badge badge-green">OK</span>'
+      : r.status==='warn'
+        ? `<span class="badge badge-yellow" title="${escH(r.errors.join('; '))}">WARN</span>`
+        : `<span class="badge badge-red" title="${escH(r.errors.join('; '))}">ERR</span>`;
+    html+=`<tr>
+      <td style="color:var(--text3)">${i+1}</td>
+      <td class="c-sig">${escH(r.evbPin)}</td>
+      <td class="c-pin">${escH(r.hpcNo)}</td>
+      <td class="c-pin">${escH(r.hpcName)}</td>
+      <td style="color:var(--text2)">${escH(r.fmcConn)}</td>
+      <td class="c-pin">${escH(r.seamPin)}</td>
+      <td style="color:var(--text2)">${escH(r.s7Conn)}</td>
+      <td class="c-fpga">${escH(r.fpgaPin)}</td>
+      <td style="color:var(--text3)">${escH(r.fpgaBank)}</td>
+      <td><input class="port-edit" value="${escH(r.portName)}"
+          oninput="mappingResult[${i}].portName=this.value;refreshXDC()"></td>
+      <td>${st}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div></div>`;
+
+  html+=`<div class="card">
+    <div class="hrow">
+      <div class="card-title">XDC output <span class="badge badge-green">LIVE</span></div>
+      <div style="display:flex;gap:8px">
+        <button class="copy-btn" onclick="copyXDC()">Copy</button>
+        <button class="copy-btn" onclick="downloadXDC()">Download .xdc</button>
+      </div>
+    </div>
+    <div class="xdc-out" id="xdc-block">${buildXDCHtml()}</div>
+  </div>`;
+
+  document.getElementById('content').innerHTML = html;
+}
+
+// ── XDC ──────────────────────────────────────────────────
+function buildXDCLines() {
+  const wstr = FMC_CONNS.map(f=>`${f}->${connWiring[f]||'none'}`).join(', ');
+  const lines = [
+    '# Generated by XDC Pin Mapper',
+    '# Chain: EVB -> FMC-HPC Converter -> S7-19PS-2 -> FPGA',
+    `# Wiring: ${wstr}`,''
+  ];
+  mappingResult.forEach(r => {
+    if (r.status==='error') { lines.push(`# [ERROR] ${r.evbPin}: ${r.errors.join('; ')}`); return; }
+    if (!r.fpgaPin)         { lines.push(`# [SKIP]  ${r.evbPin}: FPGA pin empty`); return; }
+    lines.push(`set_property PACKAGE_PIN ${r.fpgaPin} [get_ports ${r.portName||r.evbPin}]`);
+  });
+  return lines;
+}
+
+function buildXDCHtml() {
+  return buildXDCLines().map(line => {
+    if (line.startsWith('#')) return `<span class="xcm">${escH(line)}</span>`;
+    const m = line.match(/^(set_property)\s+(\S+)\s+(\S+)\s+(\[get_ports\s+)(\S+)(\])$/);
+    if (m) return `<span class="xc">${m[1]}</span> <span class="xp">${m[2]}</span> <span class="xn">${m[3]}</span> ${escH(m[4])}<span class="xo">${escH(m[5])}</span>${escH(m[6])}`;
+    return escH(line);
+  }).join('\n');
+}
+
+function refreshXDC() {
+  const b = document.getElementById('xdc-block');
+  if (b) b.innerHTML = buildXDCHtml();
+}
+
+function copyXDC() {
+  navigator.clipboard.writeText(buildXDCLines().join('\n')).then(() => {
+    const btn = event.target; btn.textContent='Copied!';
+    setTimeout(()=>btn.textContent='Copy', 1500);
+  });
+}
+
+function downloadXDC() {
+  const blob = new Blob([buildXDCLines().join('\n')], {type:'text/plain'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'pins.xdc'; a.click();
+}
+
+function warn(msg) { warnings.push(msg); }
+function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>
