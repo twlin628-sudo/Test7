@@ -57,6 +57,9 @@
   .badge-green {background:rgba(81,207,102,.15);color:var(--green);}
   .badge-yellow{background:rgba(252,196,25,.15);color:var(--yellow);}
   .badge-red   {background:rgba(255,107,107,.15);color:var(--red);}
+  .badge-grey  {background:rgba(255,255,255,.07);color:var(--text3);}
+  .row-ignored td{opacity:.35;}
+  .ignore-cb{width:15px;height:15px;cursor:pointer;accent-color:var(--red);}
   .tw{overflow-x:auto;border-radius:8px;border:1px solid var(--border);}
   table{width:100%;border-collapse:collapse;font-size:12px;}
   th{background:var(--bg3);color:var(--text2);font-weight:500;padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;font-size:11px;}
@@ -311,16 +314,53 @@ function runMapping() {
 }
 
 // ── render ────────────────────────────────────────────────
-function renderResult() {
-  const ok   = mappingResult.filter(r=>r.status==='ok').length;
-  const errs = mappingResult.filter(r=>r.status==='error').length;
-  const wrns = mappingResult.filter(r=>r.status==='warn').length;
-
-  let html = `<div class="stats">
+function refreshStats() {
+  const ok   = mappingResult.filter(r=>r.status==='ok'    && !r.ignored).length;
+  const errs = mappingResult.filter(r=>r.status==='error' && !r.ignored).length;
+  const wrns = mappingResult.filter(r=>r.status==='warn'  && !r.ignored).length;
+  const skip = mappingResult.filter(r=>r.ignored).length;
+  const el = document.getElementById('stats-block');
+  if (!el) return;
+  el.innerHTML = `
     <div class="stat"><div class="stat-val">${mappingResult.length}</div><div class="stat-lbl">Total</div></div>
     <div class="stat"><div class="stat-val" style="color:var(--green)">${ok}</div><div class="stat-lbl">OK</div></div>
     <div class="stat"><div class="stat-val" style="color:var(--yellow)">${wrns}</div><div class="stat-lbl">Warn</div></div>
     <div class="stat"><div class="stat-val" style="color:var(--red)">${errs}</div><div class="stat-lbl">Error</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--text3)">${skip}</div><div class="stat-lbl">Ignored</div></div>`;
+}
+
+function toggleIgnore(i) {
+  mappingResult[i].ignored = !mappingResult[i].ignored;
+  // update row style
+  const row = document.getElementById(`row-${i}`);
+  if (row) {
+    row.classList.toggle('row-ignored', mappingResult[i].ignored);
+    const stCell = document.getElementById(`st-${i}`);
+    if (stCell) stCell.innerHTML = statusBadge(mappingResult[i]);
+  }
+  refreshStats();
+  refreshXDC();
+}
+
+function statusBadge(r) {
+  if (r.ignored) return '<span class="badge badge-grey">IGNORED</span>';
+  if (r.status==='ok')    return '<span class="badge badge-green">OK</span>';
+  if (r.status==='warn')  return `<span class="badge badge-yellow" title="${escH(r.errors.join('; '))}">WARN</span>`;
+  return `<span class="badge badge-red" title="${escH(r.errors.join('; '))}">ERR</span>`;
+}
+
+function renderResult() {
+  const ok   = mappingResult.filter(r=>r.status==='ok').length;
+  const errs = mappingResult.filter(r=>r.status==='error').length;
+  const wrns = mappingResult.filter(r=>r.status==='warn').length;
+  const skip = mappingResult.filter(r=>r.ignored).length;
+
+  let html = `<div class="stats" id="stats-block">
+    <div class="stat"><div class="stat-val">${mappingResult.length}</div><div class="stat-lbl">Total</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--green)">${ok}</div><div class="stat-lbl">OK</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--yellow)">${wrns}</div><div class="stat-lbl">Warn</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--red)">${errs}</div><div class="stat-lbl">Error</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--text3)">${skip}</div><div class="stat-lbl">Ignored</div></div>
   </div>`;
 
   const wstr = FMC_CONNS.map(f => {
@@ -344,16 +384,12 @@ function renderResult() {
         <th>HPC/LPC Pin No.</th><th>HPC/LPC Pin Name</th>
         <th>FMC Conn</th><th>SEAM Pin No.</th>
         <th>S7 Conn</th><th>FPGA Pin</th><th>Bank</th>
-        <th>Port Name (XDC)</th><th>Status</th>
+        <th>Port Name (XDC)</th><th>Status</th><th>Ignore</th>
       </tr></thead><tbody>`;
 
   mappingResult.forEach((r,i) => {
-    const st = r.status==='ok'
-      ? '<span class="badge badge-green">OK</span>'
-      : r.status==='warn'
-        ? `<span class="badge badge-yellow" title="${escH(r.errors.join('; '))}">WARN</span>`
-        : `<span class="badge badge-red" title="${escH(r.errors.join('; '))}">ERR</span>`;
-    html+=`<tr>
+    const ignored = !!r.ignored;
+    html+=`<tr id="row-${i}" class="${ignored?'row-ignored':''}">
       <td style="color:var(--text3)">${i+1}</td>
       <td class="c-sig">${escH(r.evbPin)}</td>
       <td class="c-pin">${escH(r.hpcNo)}</td>
@@ -365,7 +401,9 @@ function renderResult() {
       <td style="color:var(--text3)">${escH(r.fpgaBank)}</td>
       <td><input class="port-edit" value="${escH(r.portName)}"
           oninput="mappingResult[${i}].portName=this.value;refreshXDC()"></td>
-      <td>${st}</td>
+      <td id="st-${i}">${statusBadge(r)}</td>
+      <td style="text-align:center"><input type="checkbox" class="ignore-cb" ${ignored?'checked':''}
+          onchange="toggleIgnore(${i})"></td>
     </tr>`;
   });
   html+=`</tbody></table></div></div>`;
@@ -393,6 +431,7 @@ function buildXDCLines() {
     `# Wiring: ${wstr}`,''
   ];
   mappingResult.forEach(r => {
+    if (r.ignored)          { lines.push(`# [IGNORED] ${r.evbPin}`); return; }
     if (r.status==='error') { lines.push(`# [ERROR] ${r.evbPin}: ${r.errors.join('; ')}`); return; }
     if (!r.fpgaPin)         { lines.push(`# [SKIP]  ${r.evbPin}: FPGA pin empty`); return; }
     lines.push(`set_property PACKAGE_PIN ${r.fpgaPin} [get_ports ${r.portName||r.evbPin}]`);
